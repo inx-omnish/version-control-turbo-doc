@@ -65,7 +65,7 @@ jobs:
         with:
           script: |
             const branchName = process.env.branch_name;
-            console.log("Creating PR from branch:", branchName);
+            echo "Creating PR from branch-----------------------------------------: $branchName", 
 
             await github.rest.pulls.create({
               owner: 'inx-omnish',
