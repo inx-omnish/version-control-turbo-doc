@@ -3,7 +3,7 @@ name: Sync Changes to Monorepo
 on:
   push:
     branches:
-      - main # Trigger on push to main branch
+      - main  # The branch in your individual repo (`docs` or `web`) to trigger this workflow
 
 jobs:
   sync-to-monorepo:
@@ -21,57 +21,45 @@ jobs:
         env:
           MONOREPO_PAT: ${{ secrets.MONOREPO_PAT }}
 
-      # Sync changes to a temporary directory and then to monorepo/apps/docs
-      - name: Sync Changes via Temporary Directory
+      # Copy changes to the monorepo
+      - name: Copy Changes to Monorepo
         run: |
-          mkdir temp_sync
-          rsync -av --exclude='.git' --exclude='monorepo' ./ temp_sync/
-          rsync -av --delete temp_sync/ monorepo/apps/docs/
-          rm -rf temp_sync  # Remove temporary folder
+          rsync -av --exclude='.git' ./ monorepo/apps/docs/  # Adjust the target path if needed
 
-      # Configure Git and check for changes
-      - name: Commit and Push Changes to Monorepo
+      # Remove any nested .git folder to avoid submodule issues
+      - name: Remove Nested .git Folder
+        run: |
+          rm -rf monorepo/apps/docs/.git  # Adjust path if needed
+
+      # Set up Git and create a new branch in the monorepo
+      - name: Create a New Branch in Monorepo
         working-directory: monorepo
         run: |
+          # Set Git identity
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Check for changes
-          if git diff --quiet; then
-            echo "No changes detected in monorepo. Exiting without commit or PR."
-            exit 0
-          fi
+          # Create a unique branch name based on the individual repo branch name and timestamp
+          branch_name="sync-${{ github.ref_name }}-$(date +'%Y%m%d%H%M%S')"
+          echo "branch_name=${branch_name}" >> $GITHUB_ENV  # Export branch name as an environment variable
 
-          # Create a unique branch name
-          branch_name="sync-${{ github.event.repository.name }}-$(date +'%Y%m%d%H%M%S')"
-          echo "branch_name=${branch_name}" >> $GITHUB_ENV  # Export branch name
-
-          # Switch to new branch, commit, and push changes
+          # Switch to the new branch
           git checkout -b "$branch_name"
-          git add apps/docs  # Only add relevant changes
+
+          # Stage and commit changes
+          git add .
           git commit -m "Sync changes from ${{ github.event.repository.name }} repo"
           git push origin "$branch_name"
         env:
           MONOREPO_PAT: ${{ secrets.MONOREPO_PAT }}
 
-      # Create PR in the monorepo (JavaScript inside the `script` section)
-      - name: Create PR in Monorepo
-        uses: actions/github-script@v6
+      # Create a Pull Request in the monorepo
+      - name: Create a Pull Request in Monorepo
+        uses: peter-evans/create-pull-request@v5
         with:
-          script: |
-            const branchName = process.env.branch_name;
-            await github.rest.pulls.create({
-              owner: 'inx-omnish',
-              repo: 'version-control-turbo',
-              title: `Sync changes from ${{ github.event.repository.name }} repo`,
-              head: branchName,
-              base: 'main',
-              body: "Automated PR to sync changes from ${{ github.event.repository.name }} repository."
-            });
-        env:
-          branch_name: ${{ env.branch_name }}
-
-      # Remove cloned monorepo
-      - name: Clean Up Monorepo Folder
-        run: |
-          rm -rf monorepo
+          token: ${{ secrets.MONOREPO_PAT }}
+          commit-message: "Sync changes from ${{ github.event.repository.name }} repo"
+          branch: ${{ env.branch_name }}  # Reference the dynamically created branch
+          base: main  # Ensure this is the main branch of your monorepo
+          title: "Sync changes from ${{ github.event.repository.name }} repo"
+          body: "Automated PR to sync changes from ${{ github.event.repository.name }} repository."
