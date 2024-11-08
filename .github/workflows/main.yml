@@ -47,7 +47,8 @@ jobs:
           git checkout -b "$branch_name"
 
           # Stage and commit changes
-          git add .
+          ls
+          git add . ':!monorepo'
           git commit -m "Sync changes from ${{ github.event.repository.name }} repo"
           git push origin "$branch_name"
         env:
