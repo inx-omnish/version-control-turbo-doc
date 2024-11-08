@@ -3,7 +3,7 @@ name: Sync Changes to Monorepo
 on:
   push:
     branches:
-      - main # The branch in your individual repo (`docs` or `web`) to trigger this workflow
+      - main # Trigger on push to main branch
 
 jobs:
   sync-to-monorepo:
@@ -14,39 +14,29 @@ jobs:
       - name: Checkout Source Repository
         uses: actions/checkout@v3
 
-      # Clone the monorepo for comparison and updates
+      # Clone the monorepo
       - name: Clone Monorepo
         run: |
           git clone https://$MONOREPO_PAT@github.com/inx-omnish/version-control-turbo.git monorepo
         env:
           MONOREPO_PAT: ${{ secrets.MONOREPO_PAT }}
 
-      # Sync changes from the individual repo to a temporary folder, then to monorepo
+      # Sync changes to a temporary directory and then to monorepo/apps/docs
       - name: Sync Changes via Temporary Directory
         run: |
-          # Create a temporary directory for syncing
           mkdir temp_sync
-
-          # Use rsync to copy changes to temp_sync (excluding .git and monorepo folder)
           rsync -av --exclude='.git' --exclude='monorepo' ./ temp_sync/
-
-          # Copy only updated files to monorepo/apps/docs
           rsync -av --delete temp_sync/ monorepo/apps/docs/
+          rm -rf temp_sync  # Remove temporary folder
 
-      # Clean up the temporary sync folder
-      - name: Remove Temporary Sync Folder
-        run: |
-          rm -rf temp_sync
-
-      # Set up Git for creating a branch and pushing in the monorepo
+      # Configure Git and check for changes
       - name: Commit and Push Changes to Monorepo
         working-directory: monorepo
         run: |
-          # Configure Git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Check for changes; if none, exit without creating a PR
+          # Check for changes
           if git diff --quiet; then
             echo "No changes detected in monorepo. Exiting without commit or PR."
             exit 0
@@ -54,34 +44,41 @@ jobs:
 
           # Create a unique branch name
           branch_name="sync-${{ github.event.repository.name }}-$(date +'%Y%m%d%H%M%S')"
-          echo "branch_name=${branch_name}" >> $GITHUB_ENV  # Export branch name as an environment variable
+          echo "branch_name=${branch_name}" >> $GITHUB_ENV  # Export branch name
 
           # Switch to new branch, commit, and push changes
           git checkout -b "$branch_name"
-          git add apps/docs  # Only add changes from apps/docs
+          git add apps/docs  # Only add relevant changes
           git commit -m "Sync changes from ${{ github.event.repository.name }} repo"
           git push origin "$branch_name"
         env:
           MONOREPO_PAT: ${{ secrets.MONOREPO_PAT }}
 
-      # Trigger a PR creation in the monorepo if changes were committed
-      - name: Trigger PR Creation in Monorepo
+      # Debugging step to print branch name
+      - name: Print Branch Name
+        run: |
+          echo "Branch created for PR: ${{ env.branch_name }}"
+
+      # Create PR in the monorepo
+      - name: Create PR in Monorepo
         uses: actions/github-script@v6
         with:
           script: |
-            console.log("Branch name:", process.env.branch_name);  // Debug log
+            const branchName = process.env.branch_name;
+            console.log("Creating PR from branch:", branchName);
+
             await github.rest.pulls.create({
               owner: 'inx-omnish',
               repo: 'version-control-turbo',
               title: `Sync changes from ${{ github.event.repository.name }} repo`,
-              head: process.env.branch_name,
+              head: branchName,
               base: 'main',
               body: "Automated PR to sync changes from ${{ github.event.repository.name }} repository."
             });
         env:
           branch_name: ${{ env.branch_name }}
 
-      # Clean up by removing the monorepo folder
-      - name: Remove Entire Monorepo Folder
+      # Remove cloned monorepo
+      - name: Clean Up Monorepo Folder
         run: |
-          rm -rf monorepo  # This deletes the cloned monorepo folder
+          rm -rf monorepo
