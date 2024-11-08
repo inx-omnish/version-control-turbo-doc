@@ -31,8 +31,8 @@ jobs:
         run: |
           rm -rf monorepo/apps/docs/.git  # Adjust path if needed
 
-      # Commit only the changes in `monorepo/apps/docs`, excluding the monorepo folder itself
-      - name: Create a New Branch and Commit Changes
+      # Set up Git and create a new branch in the monorepo
+      - name: Create a New Branch in Monorepo
         working-directory: monorepo
         run: |
           # Configure Git user
@@ -43,9 +43,9 @@ jobs:
           branch_name="sync-${{ github.ref_name }}-$(date +'%Y%m%d%H%M%S')"
           echo "branch_name=${branch_name}" >> $GITHUB_ENV
 
-          # Create new branch and add only relevant changes
+          # Create the new branch and commit only the changes in apps/docs
           git checkout -b "$branch_name"
-          git add apps/docs  # Only add the changes in apps/docs
+          git add apps/docs/*  # Only add files from apps/docs
           git commit -m "Sync changes from ${{ github.event.repository.name }} repo"
           git push origin "$branch_name"
         env:
@@ -62,7 +62,7 @@ jobs:
           title: "Sync changes from ${{ github.event.repository.name }} repo"
           body: "Automated PR to sync changes from ${{ github.event.repository.name }} repository."
 
-      # Clean up by removing the monorepo folder
+      # Clean up by removing the monorepo folder after the PR creation
       - name: Remove Monorepo Folder
         run: |
           rm -rf monorepo  # Remove the cloned monorepo folder after the PR creation
