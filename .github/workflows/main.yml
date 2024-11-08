@@ -21,25 +21,22 @@ jobs:
         env:
           MONOREPO_PAT: ${{ secrets.MONOREPO_PAT }}
 
-      # Copy changes from the individual repo to the monorepo only if there are any changes
-      - name: Sync Changes to Monorepo
+      # Sync changes from the individual repo to a temporary folder, then to monorepo
+      - name: Sync Changes via Temporary Directory
         run: |
-          # Sync only changed files to the monorepo target path
-          rsync -av --delete --exclude='.git' ./ monorepo/apps/docs/
+          # Create a temporary directory for syncing
+          mkdir temp_sync
 
-          # Check if any changes were detected in the monorepo after syncing
-          cd monorepo
-          if git diff --quiet; then
-            echo "No changes detected in monorepo. Exiting without commit or PR."
-            exit 0
-          else
-            echo "Changes detected in monorepo. Preparing to commit and push."
-          fi
+          # Use rsync to copy changes to temp_sync (excluding .git and monorepo folder)
+          rsync -av --exclude='.git' --exclude='monorepo' ./ temp_sync/
 
-      # Remove any nested .git folder to avoid submodule issues
-      - name: Remove Nested .git Folder
+          # Copy only updated files to monorepo/apps/docs
+          rsync -av --delete temp_sync/ monorepo/apps/docs/
+
+      # Clean up the temporary sync folder
+      - name: Remove Temporary Sync Folder
         run: |
-          rm -rf monorepo/apps/docs/.git  # Adjust path if needed
+          rm -rf temp_sync
 
       # Set up Git for creating a branch and pushing in the monorepo
       - name: Commit and Push Changes to Monorepo
@@ -49,25 +46,25 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Check for changes; if none, exit without creating a PR
+          if git diff --quiet; then
+            echo "No changes detected in monorepo. Exiting without commit or PR."
+            exit 0
+          fi
+
           # Create a unique branch name
           branch_name="sync-${{ github.event.repository.name }}-$(date +'%Y%m%d%H%M%S')"
           echo "branch_name=${branch_name}" >> $GITHUB_ENV  # Export branch name as an environment variable
 
           # Switch to new branch, commit, and push changes
           git checkout -b "$branch_name"
-          git add .
+          git add apps/docs  # Only add changes from apps/docs
           git commit -m "Sync changes from ${{ github.event.repository.name }} repo"
           git push origin "$branch_name"
         env:
           MONOREPO_PAT: ${{ secrets.MONOREPO_PAT }}
 
-      # Verify if the branch exists in the monorepo after pushing
-      - name: Verify Branch in Monorepo
-        working-directory: monorepo
-        run: |
-          git ls-remote --heads origin $branch_name
-
-      # Trigger a PR creation in the monorepo
+      # Trigger a PR creation in the monorepo if changes were committed
       - name: Trigger PR Creation in Monorepo
         uses: actions/github-script@v6
         with:
@@ -82,7 +79,6 @@ jobs:
               body: "Automated PR to sync changes from ${{ github.event.repository.name }} repository."
             });
         env:
-          MONOREPO_PAT: ${{ secrets.MONOREPO_PAT }}
           branch_name: ${{ env.branch_name }}
 
       # Clean up by removing the monorepo folder
