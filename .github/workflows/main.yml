@@ -54,19 +54,12 @@ jobs:
         env:
           MONOREPO_PAT: ${{ secrets.MONOREPO_PAT }}
 
-      # Debugging step to print branch name
-      - name: Print Branch Name
-        run: |
-          echo "Branch created for PR: ${{ env.branch_name }}"
-
-      # Create PR in the monorepo
+      # Create PR in the monorepo (JavaScript inside the `script` section)
       - name: Create PR in Monorepo
         uses: actions/github-script@v6
         with:
           script: |
             const branchName = process.env.branch_name;
-            echo "Creating PR from branch-----------------------------------------: $branchName", 
-
             await github.rest.pulls.create({
               owner: 'inx-omnish',
               repo: 'version-control-turbo',
