@@ -6,6 +6,7 @@ export default function Home() {
     <div className={styles.page}>
       <h1>More New changes</h1>
       <h1>New changes</h1>
+      <h1>New changes</h1>
     </div>
   );
 }
